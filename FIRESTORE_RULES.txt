@@ -1,0 +1,298 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function userExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    
+    function getUserRole() {
+      return userExists() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'USER') : 'USER';
+    }
+    
+    function getUserEnterprise() {
+      return userExists() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('enterpriseId', '') : '';
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && userExists() && getUserRole() == 'SUPER_ADMIN';
+    }
+    
+    function isEnterpriseAdmin() {
+      return isSignedIn() && userExists() && getUserRole() == 'ENTERPRISE_ADMIN';
+    }
+    
+    // Helper function to get user permissions
+    function getUserPermission() {
+      return get(/databases/$(database)/documents/user_permissions/$(request.auth.uid)).data;
+    }
+    
+    function hasUserPermission() {
+      return exists(/databases/$(database)/documents/user_permissions/$(request.auth.uid));
+    }
+    
+    // Check if user can create assessments
+    // Core permission - all users can always create assessments
+    function canCreateAssessments() {
+      return isAdmin() || 
+             isEnterpriseAdmin() || 
+             getUserEnterprise() == '' ||  // Standalone users - no restrictions
+             true;  // Enterprise users - core permission, always enabled
+    }
+    
+    // Check if user can view all assessments
+    function canViewAllAssessments() {
+      return isAdmin() || isEnterpriseAdmin() || 
+             (hasUserPermission() && getUserPermission().get('canViewAllAssessments', false));
+    }
+    
+    // Check if user can view department assessments
+    function canViewDepartmentAssessments() {
+      return hasUserPermission() && getUserPermission().get('canViewDepartmentAssessments', false);
+    }
+    
+    // Check if user can view own assessments
+    // All users (standalone and enterprise) can always view their own assessments
+    function canViewOwnAssessments() {
+      return true;  // Core permission - always enabled for everyone
+    }
+    
+    // Check if user can access FDA 483 Analysis
+    // Standalone users can always access, enterprise users need permission
+    function canAccessFda483Analysis() {
+      return isAdmin() || 
+             isEnterpriseAdmin() || 
+             getUserEnterprise() == '' ||  // Standalone users - no restrictions
+             (hasUserPermission() && getUserPermission().get('canAccessFda483Analysis', false));
+    }
+    
+    // ===== USERS COLLECTION =====
+    match /users/{userId} {
+      // Users can create their own document (for first-time login, e.g., super admin)
+      // This MUST come before isAdmin() check to allow creation when document doesn't exist
+      // The application code validates the email before setting SUPER_ADMIN role
+      allow create: if isSignedIn() && 
+                    userId == request.auth.uid &&
+                    request.resource.data.uid == request.auth.uid;
+      
+      // Users can read their own data
+      allow read: if isSignedIn() && userId == request.auth.uid;
+      
+      // Super admin has full access (only if user document exists)
+      // Note: 'read' includes both 'get' (individual document) and 'list' (collection query)
+      allow read, write, list: if isAdmin();
+      
+      // Enterprise admin can read, list, create, update, delete users (only if user document exists)
+      allow read, list, create, update, delete: if isEnterpriseAdmin();
+      
+      // Users can update their own data but can't change role or enterprise
+      allow update: if isSignedIn() && userId == request.auth.uid && 
+                      request.resource.data.role == resource.data.role &&
+                      request.resource.data.get('enterpriseId', '') == resource.data.get('enterpriseId', '');
+    }
+    
+    // ===== ENTERPRISES COLLECTION =====
+    match /enterprises/{enterpriseId} {
+      allow read, write, list: if isAdmin();
+      allow read: if isEnterpriseAdmin() && enterpriseId == getUserEnterprise();
+      allow update: if isEnterpriseAdmin() && enterpriseId == getUserEnterprise() &&
+                      request.resource.data.id == resource.data.id &&
+                      request.resource.data.adminUid == resource.data.adminUid;
+    }
+    
+    // ===== DOMAINS COLLECTION =====
+    match /domains/{domainId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // ===== SUBDOMAINS COLLECTION =====
+    match /subdomains/{subDomainId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // ===== QUESTIONS COLLECTION =====
+    match /questions/{questionId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // ===== TRAINING RESOURCES COLLECTION =====
+    match /training_resources/{resourceId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    
+    // ===== FACILITIES COLLECTION =====
+    match /facilities/{facilityId} {
+      allow read, write: if isAdmin();
+      allow read, write: if isSignedIn();
+    }
+    
+    // ===== DEPARTMENTS COLLECTION =====
+    match /departments/{departmentId} {
+      allow read, write: if isAdmin();
+      allow read, write: if isSignedIn();
+    }
+    
+    // ===== USER_PERMISSIONS COLLECTION =====
+    match /user_permissions/{permissionId} {
+      allow read, write: if isAdmin();
+      allow read: if isEnterpriseAdmin() && 
+                   resource.data.get('enterpriseId', '') == getUserEnterprise();
+      allow create, update: if isEnterpriseAdmin() && 
+                            request.resource.data.get('enterpriseId', '') == getUserEnterprise();
+      allow read: if isSignedIn() && permissionId == request.auth.uid;
+    }
+    
+    // ===== REPORTS COLLECTION =====
+    match /reports/{reportId} {
+      // Super admin has full access
+      allow read, write: if isAdmin();
+      
+      // Enterprise admin can read/list reports from their enterprise
+      allow read, list: if isEnterpriseAdmin();
+      
+      // Regular users can create reports if they have permission
+      allow create: if isSignedIn() && canCreateAssessments();
+      
+      // Users can read their own reports if they have permission
+      allow read: if isSignedIn() && 
+                    canViewOwnAssessments() &&
+                    resource.data.get('userId', '') == request.auth.uid;
+      
+      // Users can read all assessments if they have permission
+      allow read, list: if isSignedIn() && canViewAllAssessments();
+      
+      // Users can read department assessments if they have permission
+      allow read, list: if isSignedIn() && 
+                          canViewDepartmentAssessments() &&
+                          resource.data.get('userDepartment', '') == getUserPermission().get('department', '');
+      
+      // Users can update their own reports
+      allow update: if isSignedIn() && 
+                    resource.data.get('userId', '') == request.auth.uid &&
+                    request.resource.data.get('userId', '') == request.auth.uid;
+    }
+    
+    // ===== INVITATIONS COLLECTION =====
+    match /invitations/{invitationId} {
+      // Super admin has full access
+      allow read, write: if isAdmin();
+      
+      // Enterprise admin can manage invitations for their enterprise
+      // For create: check request data, for update/delete: check existing resource data
+      allow create: if isEnterpriseAdmin() && 
+                      request.resource.data.get('enterpriseId', '') == getUserEnterprise();
+      allow read, update, delete: if isEnterpriseAdmin() && 
+                                    resource.data.get('enterpriseId', '') == getUserEnterprise();
+      
+      // Anyone can read invitations by token (for accepting invitations)
+      allow read: if resource.data.get('token', '') != '';
+    }
+    
+    // ===== FDA 483 ASSESSMENTS COLLECTION =====
+    match /fda483_assessments/{assessmentId} {
+      // Super admin has full access
+      allow read, write: if isAdmin();
+      
+      // Users can create their own assessments if they have permission
+      allow create: if isSignedIn() && 
+                   canCreateAssessments() &&
+                   request.resource.data.get('userId', '') == request.auth.uid;
+      
+      // Users can list assessments (query filters by userId in the query itself)
+      allow list: if isSignedIn();
+      
+      // Users can read their own assessments if they have permission
+      allow read: if isSignedIn() && 
+                  canViewOwnAssessments() &&
+                  resource.data.get('userId', '') == request.auth.uid;
+      
+      // Users can read all assessments if they have permission
+      allow read, list: if isSignedIn() && canViewAllAssessments();
+      
+      // Users can update their own assessments
+      allow update: if isSignedIn() && 
+                   resource.data.get('userId', '') == request.auth.uid &&
+                   request.resource.data.get('userId', '') == request.auth.uid;
+      
+      // Users can delete their own assessments
+      allow delete: if isSignedIn() && 
+                   resource.data.get('userId', '') == request.auth.uid;
+    }
+    
+    // ===== CUSTOM ASSESSMENTS COLLECTION =====
+    match /custom_assessments/{assessmentId} {
+      // Super admin has full access
+      allow read, write: if isAdmin();
+      
+      // Users can create their own assessments if they have permission
+      allow create: if isSignedIn() && 
+                   canCreateAssessments() &&
+                   request.resource.data.get('userId', '') == request.auth.uid;
+      
+      // Users can list assessments (query filters by userId in the query itself)
+      allow list: if isSignedIn();
+      
+      // Users can read their own assessments if they have permission
+      allow read: if isSignedIn() && 
+                  canViewOwnAssessments() &&
+                  resource.data.get('userId', '') == request.auth.uid;
+      
+      // Users can read all assessments if they have permission
+      allow read, list: if isSignedIn() && canViewAllAssessments();
+      
+      // Users can update their own assessments
+      allow update: if isSignedIn() && 
+                   resource.data.get('userId', '') == request.auth.uid &&
+                   request.resource.data.get('userId', '') == request.auth.uid;
+      
+      // Users can delete their own assessments
+      allow delete: if isSignedIn() && 
+                   resource.data.get('userId', '') == request.auth.uid;
+    }
+    
+    // ===== IN PROGRESS ASSESSMENTS COLLECTION =====
+    match /in_progress_assessments/{assessmentId} {
+      // Allow users to read their own in-progress assessments
+      allow read: if isSignedIn() && 
+                  resource.data.userId == request.auth.uid;
+      
+      // Allow users to create their own in-progress assessments
+      allow create: if isSignedIn() && 
+                    request.resource.data.userId == request.auth.uid;
+      
+      // Allow users to update their own in-progress assessments
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid &&
+                    request.resource.data.userId == request.auth.uid;
+      
+      // Allow users to delete their own in-progress assessments
+      allow delete: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid;
+      
+      // Super admin has full access
+      allow read, write: if isAdmin();
+    }
+    
+    // ===== DEPARTMENTS COLLECTION =====
+    match /departments/{departmentId} {
+      allow read, write: if isAdmin();
+      allow read: if isEnterpriseAdmin();
+      allow read, write: if isSignedIn();
+    }
+    
+    // ===== DENY ALL BY DEFAULT =====
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

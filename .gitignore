@@ -1,0 +1,29 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Firebase sensitive files - NEVER COMMIT
+google-services.json
+serviceAccountKey.json
+app/google-services.json
+
+# API Keys
+*.key
+*.pem
+credentials.json
+
+# Node modules
+node_modules/
+package-lock.json
