@@ -293,7 +293,7 @@ fun NavGraph(
                 navController.getBackStackEntry(Screen.SuperAdminHome.route)
             }
             val superAdminViewModel: com.pramod.validator.viewmodel.SuperAdminViewModel = viewModel(homeEntry)
-            val authViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel(homeEntry)
+            val superAdminAuthViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel(homeEntry)
             
             SuperAdminHomeScreen(
                 onNavigateToPersonalDetails = { navigateTopLevel(Screen.PersonalDetails.route) },
@@ -302,7 +302,7 @@ fun NavGraph(
                 onNavigateToEnterprises = { navController.navigate(Screen.SuperAdminEnterprises.route) },
                 onNavigateToStatistics = { navController.navigate(Screen.SuperAdminStatistics.route) },
                 superAdminViewModel = superAdminViewModel,
-                authViewModel = authViewModel
+                authViewModel = superAdminAuthViewModel
             )
         }
         
@@ -311,7 +311,7 @@ fun NavGraph(
                 navController.getBackStackEntry(Screen.SuperAdminHome.route)
             }
             val superAdminViewModel: com.pramod.validator.viewmodel.SuperAdminViewModel = viewModel(usersEntry)
-            val authViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel(usersEntry)
+            val usersAuthViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel(usersEntry)
             
             SuperAdminUsersScreen(
                 onNavigateToHome = {
@@ -325,7 +325,7 @@ fun NavGraph(
                     navController.navigate(Screen.CreateUser.route)
                 },
                 superAdminViewModel = superAdminViewModel,
-                authViewModel = authViewModel
+                authViewModel = usersAuthViewModel
             )
         }
         
@@ -334,7 +334,7 @@ fun NavGraph(
                 navController.getBackStackEntry(Screen.SuperAdminHome.route)
             }
             val superAdminViewModel: com.pramod.validator.viewmodel.SuperAdminViewModel = viewModel(enterprisesEntry)
-            val authViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel(enterprisesEntry)
+            val enterprisesAuthViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel(enterprisesEntry)
             
             SuperAdminEnterprisesScreen(
                 onNavigateToHome = {
@@ -348,7 +348,7 @@ fun NavGraph(
                     navController.navigate(Screen.CreateEnterprise.route)
                 },
                 superAdminViewModel = superAdminViewModel,
-                authViewModel = authViewModel
+                authViewModel = enterprisesAuthViewModel
             )
         }
         
@@ -357,7 +357,7 @@ fun NavGraph(
                 navController.getBackStackEntry(Screen.SuperAdminHome.route)
             }
             val superAdminViewModel: com.pramod.validator.viewmodel.SuperAdminViewModel = viewModel(statisticsEntry)
-            val authViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel(statisticsEntry)
+            val statisticsAuthViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel(statisticsEntry)
             
             SuperAdminStatisticsScreen(
                 onNavigateToHome = {
@@ -368,7 +368,7 @@ fun NavGraph(
                 onNavigateToPersonalDetails = { navigateTopLevel(Screen.PersonalDetails.route) },
                 onNavigateToResources = { navigateTopLevel(Screen.Resources.route) },
                 superAdminViewModel = superAdminViewModel,
-                authViewModel = authViewModel
+                authViewModel = statisticsAuthViewModel
             )
         }
 
@@ -569,7 +569,6 @@ fun NavGraph(
         
         composable(route = Screen.CreateInvitation.route) { backStackEntry ->
             // Get the parent dashboard entry to share the same ViewModel
-            val dashboardRoute = navController.previousBackStackEntry?.destination?.route
             val enterpriseId = navController.previousBackStackEntry?.arguments?.getString("enterpriseId") ?: ""
             
             val dashboardEntry = remember(backStackEntry) {
@@ -611,7 +610,7 @@ fun NavGraph(
             val trainingResourcesViewModel: TrainingResourcesViewModel = viewModel()
             val user = currentUser
             if (user?.role == "SUPER_ADMIN") {
-                val authViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel()
+                val resourcesAuthViewModel: com.pramod.validator.viewmodel.AuthViewModel = viewModel()
                 SuperAdminTrainingResourcesScreen(
                     currentUserId = user.uid,
                     onNavigateToHome = navigateToHome,
@@ -620,7 +619,7 @@ fun NavGraph(
                     onNavigateToFda483 = { navigateTopLevel(Screen.Fda483Main.route) },
                     onSignOut = signOut,
                     viewModel = trainingResourcesViewModel,
-                    authViewModel = authViewModel
+                    authViewModel = resourcesAuthViewModel
                 )
             } else {
                 UserTrainingResourcesScreen(

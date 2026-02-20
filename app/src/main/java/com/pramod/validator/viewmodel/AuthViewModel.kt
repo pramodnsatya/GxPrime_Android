@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class AuthViewModel : ViewModel() {
     private val repository = FirebaseRepository()
@@ -28,28 +29,39 @@ class AuthViewModel : ViewModel() {
         checkAuthStatus()
     }
 
+    /** Timeout for initial auth check so we never hang on splash/loading (e.g. slow emulator/network). */
+    private companion object {
+        const val AUTH_CHECK_TIMEOUT_MS = 15_000L
+    }
+
     private fun checkAuthStatus() {
         _authState.value = AuthState.Loading
         val currentUser = repository.getCurrentUser()
         if (currentUser != null) {
             viewModelScope.launch {
                 try {
-                    val result = repository.getUserById(currentUser.uid)
-                    result.fold(
-                        onSuccess = { user ->
-                            if (user != null) {
-                                _currentUser.value = user
-                                // Load user permissions
-                                loadUserPermissions(user.uid)
-                                _authState.value = AuthState.Authenticated
-                            } else {
+                    val result = withTimeoutOrNull(AUTH_CHECK_TIMEOUT_MS) {
+                        repository.getUserById(currentUser.uid)
+                    }
+                    if (result != null) {
+                        result.fold(
+                            onSuccess = { user: User? ->
+                                if (user != null) {
+                                    _currentUser.value = user
+                                    loadUserPermissions(user.uid)
+                                    _authState.value = AuthState.Authenticated
+                                } else {
+                                    _authState.value = AuthState.Unauthenticated
+                                }
+                            },
+                            onFailure = {
                                 _authState.value = AuthState.Unauthenticated
                             }
-                        },
-                        onFailure = {
-                            _authState.value = AuthState.Unauthenticated
-                        }
-                    )
+                        )
+                    } else {
+                        android.util.Log.w("AuthViewModel", "Auth check timed out after ${AUTH_CHECK_TIMEOUT_MS / 1000}s; showing login.")
+                        _authState.value = AuthState.Unauthenticated
+                    }
                 } catch (e: Exception) {
                     _authState.value = AuthState.Unauthenticated
                 }
